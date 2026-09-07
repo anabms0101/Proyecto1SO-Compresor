@@ -86,7 +86,7 @@ make serial          # compila bin/compresor_serial y bin/descompresor_serial
 ./bin/descompresor_serial <salida.hzip> <directorio_destino>
 ```
 
-## Próximos pasos sugeridos (en orden)
+## Cosas aún pendientes
 
 1. **Fase 2 (fork + IPC):** cada proceso hijo comprime uno o varios
    archivos y devuelve `(nombre, freq[256], bit_count, data)` al padre.
@@ -119,5 +119,3 @@ make serial          # compila bin/compresor_serial y bin/descompresor_serial
    enunciado, y cuidado especial con las citas (toda función/algoritmo
    explicado que no sea de autoría propia —p. ej. `pipe()`, `fork()`,
    Huffman— debe citarse en formato APA 7).
-
-¿Seguimos con la Fase 2 (fork + IPC) en la próxima sesión?
