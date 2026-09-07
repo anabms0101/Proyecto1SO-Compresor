@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-**Fase 1 (serial) — completa y probada.**
+**Fase 1 (serial) completa**
 Los módulos comunes (MD5, Huffman, formato de archivo, utilidades de
 directorio) están terminados y son la base que reutilizarán las versiones
 paralela (fork) y concurrente (pthreads). El compresor/descompresor serial
