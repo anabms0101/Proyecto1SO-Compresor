@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-✅ **Fase 1 (serial) — completa y probada.**
+**Fase 1 (serial) — completa y probada.**
 Los módulos comunes (MD5, Huffman, formato de archivo, utilidades de
 directorio) están terminados y son la base que reutilizarán las versiones
 paralela (fork) y concurrente (pthreads). El compresor/descompresor serial
@@ -16,10 +16,10 @@ compila limpio y fue probado con:
 Resultado: 5/5 firmas MD5 verificadas, `diff -rq` entre directorio original
 y descomprimido sin diferencias.
 
-⬜ Fase 2 — compresor/descompresor paralelo con `fork()` + IPC
-⬜ Fase 3 — compresor/descompresor concurrente con `pthread()` + memoria compartida
-⬜ Fase 4 — GUI (GTK) con tabla comparativa de estadísticas
-⬜ Reporte LaTeX
+Fase 2 — compresor/descompresor paralelo con `fork()` + IPC
+Fase 3 — compresor/descompresor concurrente con `pthread()` + memoria compartida
+Fase 4 — GUI (GTK) con tabla comparativa de estadísticas
+Reporte LaTeX
 
 ## Arquitectura
 
