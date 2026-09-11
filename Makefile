@@ -21,9 +21,14 @@ $(BIN_DIR)/compresor_serial: src/serial/compressor_serial.c $(COMMON_OBJ) | $(BI
 $(BIN_DIR)/descompresor_serial: src/serial/decompressor_serial.c $(COMMON_OBJ) | $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# --- Version paralela con fork() + IPC (Fase 2, pendiente) ---
-fork:
-	@echo "TODO: implementar compresor_fork / descompresor_fork"
+# --- Version paralela con fork() + IPC (Fase 2) ---
+fork: $(BIN_DIR)/compressor_parallel $(BIN_DIR)/decompressor_parallel
+
+$(BIN_DIR)/compressor_parallel: src/fork/compressor_parallel.c $(COMMON_OBJ) | $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(BIN_DIR)/decompressor_parallel: src/fork/decompressor_parallel.c $(COMMON_OBJ) | $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 # --- Version concurrente con pthreads + memoria compartida (Fase 3, pendiente) ---
 thread:
@@ -34,7 +39,7 @@ gui:
 	@echo "TODO: implementar GUI con GTK (usa pkg-config --cflags --libs gtk4)"
 
 $(BUILD_DIR)/common_%.o: src/common/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -c -o $@ $
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
