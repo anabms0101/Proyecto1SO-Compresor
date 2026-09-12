@@ -16,10 +16,92 @@ compila limpio y fue probado con:
 Resultado: 5/5 firmas MD5 verificadas, `diff -rq` entre directorio original
 y descomprimido sin diferencias.
 
-Fase 2 — compresor/descompresor paralelo con `fork()` + IPC
-Fase 3 — compresor/descompresor concurrente con `pthread()` + memoria compartida
-Fase 4 — GUI (GTK) con tabla comparativa de estadísticas
-Reporte LaTeX
+✅ **Fase 2 (fork + IPC) — completa.** Ver seccion "Correcciones
+aplicadas" mas abajo (compresor y descompresor usan `pipe()`).
+✅ **Fase 3 (pthreads + memoria compartida) — completa.**
+✅ **Fase 4 (GUI) — completa.** Interfaz en GTK4 (`src/gui/main_gui.c`),
+compila a `bin/gui_comparador`. Ver seccion "La GUI" mas abajo.
+⬜ Reporte LaTeX
+
+## La GUI (Fase 4)
+
+**Requisito previo:** los headers de desarrollo de GTK4 no vienen
+instalados por defecto ni siquiera con GNOME instalado — hay que
+agregarlos antes de compilar:
+
+```bash
+sudo apt install libgtk-4-dev
+```
+
+**Compilar y correr:**
+
+```bash
+make gui              # compila serial+fork+thread (si falta) y la GUI
+./bin/gui_comparador
+```
+
+**Decision de diseno importante:** la GUI **no reimplementa** la logica
+de `fork()` ni de `pthread()` dentro de su propio proceso. En cambio,
+invoca los 6 binarios ya compilados (`compresor_serial`,
+`compressor_parallel`, `compressor_thread` y sus 3 descompresores) como
+subprocesos con `g_spawn_sync()`, y lee una linea `RESULT ...` que cada
+programa imprime al final de su ejecucion para extraer las metricas
+exactas (tiempo, tamanos, firmas verificadas).
+
+Esto no es solo por simplicidad — es evitar un problema real y sutil de
+sistemas operativos: **mezclar `fork()` con un proceso multi-hilo es
+peligroso.** GTK usa hilos internamente (por ejemplo para I/O
+asincrono), y si uno de esos hilos tiene tomado el *lock* interno del
+`malloc()` de glibc justo en el instante en que otro hilo llama a
+`fork()`, el proceso hijo hereda ese lock ya tomado — pero el hilo que
+lo tenia **no existe** en el hijo (POSIX: `fork()` solo duplica el hilo
+que lo invoco), asi que el hijo se queda esperando un lock que jamas se
+va a liberar, y se cuelga en su primer `malloc()`. Al invocar los
+binarios via `g_spawn` (que internamente hace `fork()`+`exec()`), el
+hijo arranca como un proceso nuevo de un solo hilo antes de correr
+nuestra logica de compresion — el `exec()` resetea la imagen de memoria
+por completo, asi que este riesgo desaparece. Vale la pena mencionar
+esta decision en la seccion de conclusiones del informe.
+
+Para que la GUI pueda parsear los resultados, cada uno de los 6
+programas de consola imprime, como ultima linea de su salida, algo asi:
+
+```
+RESULT ok=1 elapsed=0.001234 original_size=122012 compressed_size=66439
+RESULT ok=1 elapsed=0.000987 verified=13 total=13
+```
+
+(la primera forma la usan los 3 compresores, la segunda los 3
+descompresores). Si algo falla, imprimen `RESULT ok=0` y la GUI lo
+marca como error en la tabla en vez de mostrar numeros inventados.
+
+**Flujo de la interfaz:**
+1. El usuario elige un directorio (`GtkFileDialog`, selector de carpetas
+   nativo de GTK4) y opcionalmente tilda "incluir subdirectorios" y
+   ajusta cuantos procesos/hilos usar.
+2. Al presionar "Comprimir y descomprimir con las 3 versiones", un hilo
+   de fondo (`GThread`, para no congelar la ventana) corre, en orden:
+   `compresor_serial` → `compressor_parallel` → `compressor_thread` →
+   `descompresor_serial` → `decompressor_parallel` → `decompressor_thread`,
+   cada uno sobre un `.hzip` propio dentro de un directorio temporal
+   (`g_dir_make_tmp`, no se toca el directorio original del usuario).
+3. Los resultados se vuelcan a una tabla comparativa con las 8 metricas
+   pedidas por el enunciado (salud, tiempo compresor, tiempo
+   descompresor, % aceleracion del compresor y del descompresor
+   respecto a la corrida serial, tamano original, tamano comprimido,
+   radio de compresion) — una fila por version.
+4. Un panel colapsable ("Ver salida detallada") muestra el log completo
+   de las 6 corridas, util para depurar o para las capturas del informe.
+
+**Probado** en Ubuntu 24.04 + GTK 4.14.5 (equivalente en API a la GTK4
+de Debian 13) corriendo bajo Xvfb (X virtual, sin pantalla fisica): la
+ventana arranca sin errores, y una corrida completa sobre un directorio
+de prueba con texto y binarios genero los 3 `.hzip` — confirmados
+**byte a byte identicos entre si** — y las 3 extracciones dieron
+**identicas al directorio original** (`diff -rq` sin diferencias). En
+Debian 13 con GNOME, el selector de carpetas depende del bus de sesion
+de D-Bus (presente en cualquier sesion grafica real; solo falta en un
+contenedor de pruebas sin entorno de escritorio).
 
 ## Correcciones aplicadas en esta revisión
 
@@ -123,42 +205,20 @@ cada archivo, no el formato del contenedor.
 ## Compilar y probar
 
 ```bash
-make serial          # compila bin/compresor_serial y bin/descompresor_serial
+make all              # serial + fork + thread + gui (requiere libgtk-4-dev)
 
 ./bin/compresor_serial <directorio_origen> <salida.hzip> [--recursivo]
 ./bin/descompresor_serial <salida.hzip> <directorio_destino>
+./bin/gui_comparador   # interfaz grafica (ver seccion "La GUI" mas arriba)
 ```
 
 ## Cosas aún pendientes
 
-1. **Fase 2 (fork + IPC):** cada proceso hijo comprime uno o varios
-   archivos y devuelve `(nombre, freq[256], bit_count, data)` al padre.
-   Como `fork()` copia la memoria pero no la comparte, hay que decidir el
-   mecanismo de IPC: la opción más simple y robusta es que cada hijo
-   escriba su resultado ya serializado a un **pipe** hacia el padre (o a
-   un archivo temporal), y el padre sea el único que escribe el `.hzip`
-   final — así se evita sincronizar escrituras concurrentes al mismo
-   archivo.
-
-2. **Fase 3 (pthreads + memoria compartida):** un pool de N threads toma
-   archivos de una cola compartida (protegida con `pthread_mutex_t`), cada
-   uno comprime en un buffer propio, y el hilo principal escribe el
-   `.hzip` cuando todos terminan (o usa un mutex para escritura ordenada).
-   Aquí "memoria compartida" es más directa que en fork, porque los
-   threads ya comparten el espacio de direcciones del proceso — hay que
-   dejar claro en el informe cómo se sincroniza el acceso a la cola y a la
-   escritura del archivo de salida.
-
-3. **Fase 4 (GUI):** reutiliza las funciones de `archive.h` (o invoca los
-   3 binarios como subprocesos) y arma la tabla comparativa con las
-   métricas pedidas: salud, tiempos, aceleración, tamaños, radio de
-   compresión.
-
-4. **Descarga del corpus:** bajar el top 100 (30 días) de Project
+1. **Descarga del corpus:** bajar el top 100 (30 días) de Project
    Gutenberg, filtrando solo los que tengan formato de texto plano (`.txt`),
    y guardarlos en `data/`.
 
-5. **Reporte LaTeX:** con la plantilla del curso, secciones exactas del
+2. **Reporte LaTeX:** con la plantilla del curso, secciones exactas del
    enunciado, y cuidado especial con las citas (toda función/algoritmo
    explicado que no sea de autoría propia —p. ej. `pipe()`, `fork()`,
    Huffman— debe citarse en formato APA 7).
