@@ -1,6 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -D_POSIX_C_SOURCE=200809L -O2 -Iinclude
 LDFLAGS =
+PTHREAD_FLAGS = -pthread
 
 BUILD_DIR = build
 BIN_DIR = bin
@@ -30,9 +31,14 @@ $(BIN_DIR)/compressor_parallel: src/fork/compressor_parallel.c $(COMMON_OBJ) | $
 $(BIN_DIR)/decompressor_parallel: src/fork/decompressor_parallel.c $(COMMON_OBJ) | $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# --- Version concurrente con pthreads + memoria compartida (Fase 3, pendiente) ---
-thread:
-	@echo "TODO: implementar compresor_thread / descompresor_thread (usa -pthread)"
+# --- Version concurrente con pthreads + memoria compartida (Fase 3) ---
+thread: $(BIN_DIR)/compressor_thread $(BIN_DIR)/decompressor_thread
+
+$(BIN_DIR)/compressor_thread: src/thread/compressor_thread.c $(COMMON_OBJ) | $(BIN_DIR)
+	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) -o $@ $^ $(LDFLAGS)
+
+$(BIN_DIR)/decompressor_thread: src/thread/decompressor_thread.c $(COMMON_OBJ) | $(BIN_DIR)
+	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) -o $@ $^ $(LDFLAGS)
 
 # --- Interfaz grafica GTK (Fase 4, pendiente) ---
 gui:
