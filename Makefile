@@ -6,7 +6,7 @@ PTHREAD_FLAGS = -pthread
 BUILD_DIR = build
 BIN_DIR = bin
 
-COMMON_SRC = src/common/md5.c src/common/huffman.c src/common/archive.c src/common/fileutils.c
+COMMON_SRC = src/common/md5.c src/common/huffman.c src/common/archive.c src/common/fileutils.c src/common/binio.c src/common/entry_codec.c
 COMMON_OBJ = $(COMMON_SRC:src/common/%.c=$(BUILD_DIR)/common_%.o)
 
 .PHONY: all serial fork thread gui clean
@@ -45,7 +45,7 @@ gui:
 	@echo "TODO: implementar GUI con GTK (usa pkg-config --cflags --libs gtk4)"
 
 $(BUILD_DIR)/common_%.o: src/common/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c -o $@ $
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)

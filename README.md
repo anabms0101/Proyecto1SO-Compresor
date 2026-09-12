@@ -21,6 +21,49 @@ Fase 3 — compresor/descompresor concurrente con `pthread()` + memoria comparti
 Fase 4 — GUI (GTK) con tabla comparativa de estadísticas
 Reporte LaTeX
 
+## Correcciones aplicadas en esta revisión
+
+1. **Typo en el `Makefile`** (`$@ $` en vez de `$@ $<` en la regla de los
+   `.o` comunes): el proyecto no compilaba. Corregido.
+
+2. **`compressor_parallel.c` (fork) ahora usa `pipe()` en vez de archivos
+   temporales en `/tmp`.** Cada hijo comprime su rango de archivos y manda
+   cada entrada ya serializada por el extremo de escritura de su pipe; el
+   padre drena cada pipe **en orden** directo al `.hzip` final a medida
+   que va llegando. Así la comunicación hijo→padre es una estrategia de
+   IPC real (igual que ya usaba `decompressor_parallel.c`), y el reporte
+   queda consistente entre compresor y descompresor. Probado con archivos
+   de hasta 2 MB (muy por encima de los ~64 KB del buffer típico de un
+   pipe en Linux) sin interbloqueo: el padre no espera a que todos los
+   hijos terminen antes de empezar a leer, así que un hijo que llena su
+   pipe simplemente se bloquea en `write()` hasta que el padre le toca
+   drenarlo — nunca hay una espera circular entre procesos.
+
+3. **Deduplicación de código entre fork y thread.** Antes, `write_u32` /
+   `write_u64` / `read_u32` / `read_u64`, la lógica de "comprimir un
+   archivo a un buffer en memoria" y la de "leer y verificar una entrada"
+   estaban copiadas y pegadas en `src/fork/*.c` y `src/thread/*.c`. Ahora
+   viven en un solo lugar, reutilizado por las 3 versiones:
+   - `include/binio.h` + `src/common/binio.c` — lectura/escritura binaria
+     little-endian (`write_u32`, `write_u64`, `read_u32`, `read_u64`).
+   - `include/entry_codec.h` + `src/common/entry_codec.c` —
+     `entry_encode()` (comprime un archivo a un buffer en memoria) y
+     `entry_extract_one()` (lee y verifica una entrada desde un `FILE*`
+     ya posicionado).
+   - `archive_build_index()` (nueva función en `archive.h`/`archive.c`) —
+     escanea el `.hzip` y devuelve los offsets de cada entrada, para que
+     fork y thread puedan repartir el trabajo de descompresión sin
+     duplicar ese escaneo.
+
+   Los 4 archivos de `src/fork/` y `src/thread/` quedaron mucho más
+   cortos: solo tienen la lógica específica de *cómo reparten el
+   trabajo* (fork+pipes vs. cola compartida+mutex), no la lógica de
+   formato del `.hzip`.
+
+   Verificado de nuevo extremo a extremo: los `.hzip` generados por
+   serial, fork y thread siguen siendo **byte a byte idénticos** (mismo
+   MD5) sobre el mismo directorio de prueba.
+
 ## Arquitectura
 
 ```

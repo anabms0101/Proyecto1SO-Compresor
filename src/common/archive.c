@@ -1,39 +1,10 @@
 #include "archive.h"
 #include "fileutils.h"
 #include "huffman.h"
+#include "binio.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-/* --- Helpers de escritura/lectura binaria portable (little-endian) --- */
-
-static void write_u32(FILE *f, uint32_t v) {
-    unsigned char b[4] = { (unsigned char)(v), (unsigned char)(v >> 8),
-                            (unsigned char)(v >> 16), (unsigned char)(v >> 24) };
-    fwrite(b, 1, 4, f);
-}
-
-static void write_u64(FILE *f, uint64_t v) {
-    unsigned char b[8];
-    for (int i = 0; i < 8; i++) b[i] = (unsigned char)(v >> (8 * i));
-    fwrite(b, 1, 8, f);
-}
-
-static int read_u32(FILE *f, uint32_t *v) {
-    unsigned char b[4];
-    if (fread(b, 1, 4, f) != 4) return -1;
-    *v = (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
-    return 0;
-}
-
-static int read_u64(FILE *f, uint64_t *v) {
-    unsigned char b[8];
-    if (fread(b, 1, 8, f) != 8) return -1;
-    uint64_t r = 0;
-    for (int i = 0; i < 8; i++) r |= ((uint64_t)b[i]) << (8 * i);
-    *v = r;
-    return 0;
-}
 
 int archive_compress_directory(const char *dir_path, const char *out_path, int recursive) {
     FileList files;
@@ -184,5 +155,46 @@ int archive_extract(const char *archive_path, const char *out_dir,
     fclose(in);
     if (verified_count) *verified_count = verified;
     if (total_count) *total_count = (int)num_files;
+    return 0;
+}
+
+int archive_build_index(const char *archive_path, long **out_offsets, uint32_t *out_count) {
+    FILE *in = fopen(archive_path, "rb");
+    if (!in) return -1;
+
+    char magic[4];
+    if (fread(magic, 1, 4, in) != 4 || memcmp(magic, ARCHIVE_MAGIC, 4) != 0) {
+        fclose(in);
+        return -1;
+    }
+
+    uint32_t num_files;
+    if (read_u32(in, &num_files) != 0) { fclose(in); return -1; }
+
+    long *offsets = malloc(sizeof(long) * (num_files > 0 ? num_files : 1));
+
+    for (uint32_t i = 0; i < num_files; i++) {
+        offsets[i] = ftell(in);
+
+        uint32_t name_len;
+        if (read_u32(in, &name_len) != 0) { fclose(in); free(offsets); return -1; }
+        fseek(in, name_len, SEEK_CUR);
+
+        uint64_t original_size;
+        if (read_u64(in, &original_size) != 0) { fclose(in); free(offsets); return -1; }
+
+        fseek(in, MD5_DIGEST_SIZE, SEEK_CUR);
+        fseek(in, 256 * 8, SEEK_CUR); /* tabla de frecuencias */
+
+        uint64_t bit_count, compressed_bytes;
+        if (read_u64(in, &bit_count) != 0) { fclose(in); free(offsets); return -1; }
+        if (read_u64(in, &compressed_bytes) != 0) { fclose(in); free(offsets); return -1; }
+
+        fseek(in, (long)compressed_bytes, SEEK_CUR);
+    }
+
+    fclose(in);
+    *out_offsets = offsets;
+    *out_count = num_files;
     return 0;
 }
