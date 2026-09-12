@@ -83,6 +83,7 @@ int main(int argc, char **argv) {
     if (files.count == 0) {
         fprintf(stderr, "No hay archivos para comprimir en '%s'\n", dir_path);
         file_list_free(&files);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
@@ -117,6 +118,7 @@ int main(int argc, char **argv) {
         for (int i = 0; i < files.count; i++) entry_encoded_free(&results[i]);
         free(results);
         file_list_free(&files);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
@@ -129,6 +131,7 @@ int main(int argc, char **argv) {
         for (int i = 0; i < files.count; i++) entry_encoded_free(&results[i]);
         free(results);
         file_list_free(&files);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
@@ -147,9 +150,21 @@ int main(int argc, char **argv) {
     clock_gettime(CLOCK_MONOTONIC, &t1);
     double elapsed = (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9;
 
+    uint64_t original_size = directory_total_size(dir_path, recursive);
+    uint64_t compressed_size = file_size_bytes(out_path);
+
     printf("Compresion concurrente (pthreads) completa: %s -> %s\n", dir_path, out_path);
     printf("Hilos utilizados: %d\n", num_threads);
     printf("Tiempo total: %.4f s\n", elapsed);
+    printf("Tamano original: %llu bytes\n", (unsigned long long)original_size);
+    printf("Tamano comprimido: %llu bytes\n", (unsigned long long)compressed_size);
+    if (original_size > 0) {
+        printf("Radio de compresion: %.2f%%\n",
+               100.0 * (double)compressed_size / (double)original_size);
+    }
+
+    printf("RESULT ok=1 elapsed=%.6f original_size=%llu compressed_size=%llu threads=%d\n",
+           elapsed, (unsigned long long)original_size, (unsigned long long)compressed_size, num_threads);
 
     return 0;
 }

@@ -121,3 +121,25 @@ void file_list_free(FileList *list) {
     list->paths = NULL;
     list->count = 0;
 }
+
+uint64_t directory_total_size(const char *dir_path, int recursive) {
+    FileList files;
+    list_directory_files(dir_path, recursive, &files);
+
+    uint64_t total = 0;
+    for (int i = 0; i < files.count; i++) {
+        char full_path[4096];
+        join_path(full_path, sizeof(full_path), dir_path, files.paths[i]);
+        struct stat st;
+        if (stat(full_path, &st) == 0) total += (uint64_t)st.st_size;
+    }
+
+    file_list_free(&files);
+    return total;
+}
+
+uint64_t file_size_bytes(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+    return (uint64_t)st.st_size;
+}

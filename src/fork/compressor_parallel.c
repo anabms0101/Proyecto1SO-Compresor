@@ -85,6 +85,7 @@ int main(int argc, char **argv) {
     if (files.count == 0) {
         fprintf(stderr, "No hay archivos para comprimir en '%s'\n", dir_path);
         file_list_free(&files);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
@@ -105,6 +106,7 @@ int main(int argc, char **argv) {
         if (pipe(pipes[w]) != 0) {
             perror("pipe");
             file_list_free(&files);
+            printf("RESULT ok=0\n");
             return 1;
         }
 
@@ -112,6 +114,7 @@ int main(int argc, char **argv) {
         if (pid < 0) {
             perror("fork");
             file_list_free(&files);
+            printf("RESULT ok=0\n");
             return 1;
         } else if (pid == 0) {
             /* --- Proceso hijo --- */
@@ -139,6 +142,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "No se pudo crear '%s'\n", out_path);
         for (int w = 0; w < num_workers; w++) close(pipes[w][0]);
         file_list_free(&files);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
@@ -167,15 +171,28 @@ int main(int argc, char **argv) {
     if (io_fail || child_fail) {
         fprintf(stderr, "Error: uno o mas procesos hijos fallaron al comprimir\n");
         remove(out_path);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);
     double elapsed = (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9;
 
+    uint64_t original_size = directory_total_size(dir_path, recursive);
+    uint64_t compressed_size = file_size_bytes(out_path);
+
     printf("Compresion paralela (fork + pipes) completa: %s -> %s\n", dir_path, out_path);
     printf("Procesos utilizados: %d\n", num_workers);
     printf("Tiempo total: %.4f s\n", elapsed);
+    printf("Tamano original: %llu bytes\n", (unsigned long long)original_size);
+    printf("Tamano comprimido: %llu bytes\n", (unsigned long long)compressed_size);
+    if (original_size > 0) {
+        printf("Radio de compresion: %.2f%%\n",
+               100.0 * (double)compressed_size / (double)original_size);
+    }
+
+    printf("RESULT ok=1 elapsed=%.6f original_size=%llu compressed_size=%llu workers=%d\n",
+           elapsed, (unsigned long long)original_size, (unsigned long long)compressed_size, num_workers);
 
     return 0;
 }

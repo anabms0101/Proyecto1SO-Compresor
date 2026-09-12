@@ -29,4 +29,12 @@ void file_list_free(FileList *list);
 /* Construye 'dst' = 'dir' + "/" + 'name', con manejo de tamano de buffer. */
 void join_path(char *dst, size_t dst_size, const char *dir, const char *name);
 
+/* Suma el tamano en bytes de todos los archivos regulares dentro de
+ * 'dir_path' (usa la misma logica de recorrido que list_directory_files,
+ * asi que 'recursive' debe coincidir con el usado al comprimir). */
+uint64_t directory_total_size(const char *dir_path, int recursive);
+
+/* Tamano en bytes de un archivo. Devuelve 0 si no existe o hay error. */
+uint64_t file_size_bytes(const char *path);
+
 #endif /* FILEUTILS_H */

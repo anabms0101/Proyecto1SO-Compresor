@@ -52,11 +52,13 @@ int main(int argc, char **argv) {
     uint32_t total = 0;
     if (archive_build_index(archive_path, &offsets, &total) != 0) {
         fprintf(stderr, "Error al leer '%s'\n", archive_path);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
     if (total == 0) {
         printf("Archivo vacio, nada que descomprimir.\n");
+        printf("RESULT ok=1 elapsed=0.000000 verified=0 total=0\n");
         free(offsets);
         return 0;
     }
@@ -76,12 +78,18 @@ int main(int argc, char **argv) {
         int count = base + (w < extra ? 1 : 0);
         int end = start + count;
 
-        if (pipe(pipes[w]) != 0) { perror("pipe"); free(offsets); return 1; }
+        if (pipe(pipes[w]) != 0) {
+            perror("pipe");
+            free(offsets);
+            printf("RESULT ok=0\n");
+            return 1;
+        }
 
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
             free(offsets);
+            printf("RESULT ok=0\n");
             return 1;
         } else if (pid == 0) {
             close(pipes[w][0]);
@@ -118,6 +126,9 @@ int main(int argc, char **argv) {
     printf("Firmas verificadas: %d/%u (%.2f%% de salud)\n",
            total_verified, total, total > 0 ? (100.0 * total_verified / total) : 100.0);
     printf("Tiempo total: %.4f s\n", elapsed);
+
+    printf("RESULT ok=1 elapsed=%.6f verified=%d total=%u workers=%d\n",
+           elapsed, total_verified, total, num_workers);
 
     return 0;
 }
