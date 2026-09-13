@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-**Fase 1 (serial) completa**
+✅ **Fase 1 (serial) completa**
 Los módulos comunes (MD5, Huffman, formato de archivo, utilidades de
 directorio) están terminados y son la base que reutilizarán las versiones
 paralela (fork) y concurrente (pthreads). El compresor/descompresor serial
@@ -18,9 +18,12 @@ y descomprimido sin diferencias.
 
 ✅ **Fase 2 (fork + IPC) — completa.** Ver seccion "Correcciones
 aplicadas" mas abajo (compresor y descompresor usan `pipe()`).
+
 ✅ **Fase 3 (pthreads + memoria compartida) — completa.**
+
 ✅ **Fase 4 (GUI) — completa.** Interfaz en GTK4 (`src/gui/main_gui.c`),
 compila a `bin/gui_comparador`. Ver seccion "La GUI" mas abajo.
+
 ⬜ Reporte LaTeX
 
 ## La GUI (Fase 4)
