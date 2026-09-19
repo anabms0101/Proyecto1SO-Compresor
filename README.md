@@ -23,6 +23,23 @@ aplicadas" mas abajo (compresor y descompresor usan `pipe()`).
 compila a `bin/gui_comparador`. Ver seccion "La GUI" mas abajo.
 ⬜ Reporte LaTeX
 
+**Compilar y correr TODO:**
+
+```bash
+0. Instalar dependencias
+sudo apt update
+sudo apt install build-essential libgtk-4-dev
+
+1. Abrir la carpeta con el proyecto
+cd Downloads
+cd Proyecto1SO-Compresor-main
+
+2. Compilar
+make clean
+make all
+./bin/gui_comparador
+```
+
 ## La GUI (Fase 4)
 
 **Requisito previo:** los headers de desarrollo de GTK4 no vienen
