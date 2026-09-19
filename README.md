@@ -214,11 +214,7 @@ make all              # serial + fork + thread + gui (requiere libgtk-4-dev)
 
 ## Cosas aún pendientes
 
-1. **Descarga del corpus:** bajar el top 100 (30 días) de Project
-   Gutenberg, filtrando solo los que tengan formato de texto plano (`.txt`),
-   y guardarlos en `data/`.
-
-2. **Reporte LaTeX:** con la plantilla del curso, secciones exactas del
+1. **Reporte LaTeX:** con la plantilla del curso, secciones exactas del
    enunciado, y cuidado especial con las citas (toda función/algoritmo
    explicado que no sea de autoría propia —p. ej. `pipe()`, `fork()`,
    Huffman— debe citarse en formato APA 7).
