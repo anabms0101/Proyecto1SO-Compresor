@@ -151,17 +151,40 @@ typedef struct {
     gchar *bin_dir;
 } AppWidgets;
 
+/* Antes cada VERSION era una fila y cada METRICA era una columna. Ahora
+ * esta transpuesto: cada METRICA es una fila, y cada VERSION es una
+ * columna -- por eso el enum de columnas ahora es "Metrica / Serial /
+ * Fork / Pthreads" en vez de las 9 metricas de antes. */
 enum {
-    COL_VERSION = 0,
-    COL_HEALTH,
-    COL_TIME_COMPRESS,
-    COL_TIME_DECOMPRESS,
-    COL_SPEEDUP_COMPRESS,
-    COL_SPEEDUP_DECOMPRESS,
-    COL_SIZE_ORIGINAL,
-    COL_SIZE_COMPRESSED,
-    COL_RATIO,
+    COL_METRIC = 0,
+    COL_SERIAL,
+    COL_FORK,
+    COL_THREAD,
     N_COLS
+};
+
+/* Cada METRICA es ahora una fila de la tabla, en este orden. */
+enum {
+    ROW_HEALTH = 0,
+    ROW_TIME_COMPRESS,
+    ROW_TIME_DECOMPRESS,
+    ROW_SPEEDUP_COMPRESS,
+    ROW_SPEEDUP_DECOMPRESS,
+    ROW_SIZE_ORIGINAL,
+    ROW_SIZE_COMPRESSED,
+    ROW_RATIO,
+    N_ROWS
+};
+
+static const char *ROW_LABELS[N_ROWS] = {
+    "Salud de la compresión",
+    "Tiempo del compresor",
+    "Tiempo del descompresor",
+    "Aceleración del compresor",
+    "Aceleración del descompresor",
+    "Tamaño original",
+    "Tamaño comprimido",
+    "Radio de compresión",
 };
 
 /* ==================== Resultado completo de correr una version ==================== */
@@ -208,22 +231,17 @@ static gchar *format_bytes(guint64 bytes) {
     return g_strdup_printf("%" G_GUINT64_FORMAT " B", bytes);
 }
 
-/* Agrega una fila a la tabla comparativa. 'serial_c_elapsed' /
+/* Calcula las N_ROWS metricas de UNA version y las deja en 'out',
+ * en el mismo orden que ROW_LABELS -- esto es lo que despues se vuelca
+ * como una COLUMNA de la tabla transpuesta. 'serial_c_elapsed' /
  * 'serial_d_elapsed' son los tiempos de la corrida serial, usados como
- * base para calcular el % de aceleracion (para la fila "Serial" misma,
- * el resultado da 0%, que es lo esperado: es la base de comparacion). */
-static void add_result_row(AppWidgets *app, const char *version_name,
-                            VersionRun *run, double serial_c_elapsed, double serial_d_elapsed) {
-    GtkTreeIter iter;
-
+ * base para el % de aceleracion (para la version serial misma da
+ * +0.0%, que es lo esperado: es la base de comparacion).
+ * El caller debe liberar cada string con g_free (ver free_version_values). */
+static void format_version_values(VersionRun *run, double serial_c_elapsed,
+                                   double serial_d_elapsed, gchar *out[N_ROWS]) {
     if (!run->compress.ok || !run->decompress.ok) {
-        gtk_list_store_append(app->list_store, &iter);
-        gtk_list_store_set(app->list_store, &iter,
-            COL_VERSION, version_name,
-            COL_HEALTH, "-", COL_TIME_COMPRESS, "-", COL_TIME_DECOMPRESS, "-",
-            COL_SPEEDUP_COMPRESS, "-", COL_SPEEDUP_DECOMPRESS, "-",
-            COL_SIZE_ORIGINAL, "-", COL_SIZE_COMPRESSED, "-", COL_RATIO, "ERROR",
-            -1);
+        for (int i = 0; i < N_ROWS; i++) out[i] = g_strdup("ERROR");
         return;
     }
 
@@ -238,30 +256,18 @@ static void add_result_row(AppWidgets *app, const char *version_name,
     double ratio = run->compress.original_size > 0
         ? (100.0 * (double)run->compress.compressed_size / (double)run->compress.original_size) : 0.0;
 
-    gchar *health_s = g_strdup_printf("%.2f%% (%d/%d)", health, run->decompress.verified, run->decompress.total);
-    gchar *tc_s = g_strdup_printf("%.4f s", run->compress.elapsed);
-    gchar *td_s = g_strdup_printf("%.4f s", run->decompress.elapsed);
-    gchar *sc_s = g_strdup_printf("%+.1f%%", speedup_c);
-    gchar *sd_s = g_strdup_printf("%+.1f%%", speedup_d);
-    gchar *orig_s = format_bytes(run->compress.original_size);
-    gchar *comp_s = format_bytes(run->compress.compressed_size);
-    gchar *ratio_s = g_strdup_printf("%.2f%%", ratio);
+    out[ROW_HEALTH] = g_strdup_printf("%.2f%% (%d/%d)", health, run->decompress.verified, run->decompress.total);
+    out[ROW_TIME_COMPRESS] = g_strdup_printf("%.4f s", run->compress.elapsed);
+    out[ROW_TIME_DECOMPRESS] = g_strdup_printf("%.4f s", run->decompress.elapsed);
+    out[ROW_SPEEDUP_COMPRESS] = g_strdup_printf("%+.1f%%", speedup_c);
+    out[ROW_SPEEDUP_DECOMPRESS] = g_strdup_printf("%+.1f%%", speedup_d);
+    out[ROW_SIZE_ORIGINAL] = format_bytes(run->compress.original_size);
+    out[ROW_SIZE_COMPRESSED] = format_bytes(run->compress.compressed_size);
+    out[ROW_RATIO] = g_strdup_printf("%.2f%%", ratio);
+}
 
-    gtk_list_store_append(app->list_store, &iter);
-    gtk_list_store_set(app->list_store, &iter,
-        COL_VERSION, version_name,
-        COL_HEALTH, health_s,
-        COL_TIME_COMPRESS, tc_s,
-        COL_TIME_DECOMPRESS, td_s,
-        COL_SPEEDUP_COMPRESS, sc_s,
-        COL_SPEEDUP_DECOMPRESS, sd_s,
-        COL_SIZE_ORIGINAL, orig_s,
-        COL_SIZE_COMPRESSED, comp_s,
-        COL_RATIO, ratio_s,
-        -1);
-
-    g_free(health_s); g_free(tc_s); g_free(td_s); g_free(sc_s); g_free(sd_s);
-    g_free(orig_s); g_free(comp_s); g_free(ratio_s);
+static void free_version_values(gchar *vals[N_ROWS]) {
+    for (int i = 0; i < N_ROWS; i++) g_free(vals[i]);
 }
 
 typedef struct {
@@ -282,9 +288,27 @@ static gboolean finish_run_idle(gpointer data) {
         double serial_c = r->serial.compress.ok ? r->serial.compress.elapsed : 0.0;
         double serial_d = r->serial.decompress.ok ? r->serial.decompress.elapsed : 0.0;
 
-        add_result_row(app, "Serial", &r->serial, serial_c, serial_d);
-        add_result_row(app, "Fork + IPC (pipes)", &r->fork, serial_c, serial_d);
-        add_result_row(app, "Pthreads + mem. compartida", &r->thread, serial_c, serial_d);
+        gchar *serial_vals[N_ROWS];
+        gchar *fork_vals[N_ROWS];
+        gchar *thread_vals[N_ROWS];
+        format_version_values(&r->serial, serial_c, serial_d, serial_vals);
+        format_version_values(&r->fork, serial_c, serial_d, fork_vals);
+        format_version_values(&r->thread, serial_c, serial_d, thread_vals);
+
+        for (int i = 0; i < N_ROWS; i++) {
+            GtkTreeIter iter;
+            gtk_list_store_append(app->list_store, &iter);
+            gtk_list_store_set(app->list_store, &iter,
+                COL_METRIC, ROW_LABELS[i],
+                COL_SERIAL, serial_vals[i],
+                COL_FORK, fork_vals[i],
+                COL_THREAD, thread_vals[i],
+                -1);
+        }
+
+        free_version_values(serial_vals);
+        free_version_values(fork_vals);
+        free_version_values(thread_vals);
 
         gchar *status = g_strdup_printf(
             "Comparativa completa. Archivos .hzip y carpetas extraidas en: %s", r->work_dir);
@@ -571,17 +595,15 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
     gtk_label_set_wrap(GTK_LABEL(app->status_label), TRUE);
     gtk_box_append(GTK_BOX(root), app->status_label);
 
-    /* --- Tabla comparativa --- */
+    /* --- Tabla comparativa (transpuesta: filas = metricas, columnas = version) --- */
     app->list_store = gtk_list_store_new(N_COLS,
-        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
-        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
+        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
 
     GtkWidget *tree_view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(app->list_store));
     g_object_unref(app->list_store);
 
     const char *headers[N_COLS] = {
-        "Version", "Salud compresion", "T. compresor", "T. descompresor",
-        "Acel. compresor", "Acel. descompresor", "Tam. original", "Tam. comprimido", "Radio compresion"
+        "Métrica", "Serial", "Fork + IPC (pipes)", "Pthreads + mem. compartida"
     };
     for (int i = 0; i < N_COLS; i++) {
         GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
