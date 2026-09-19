@@ -11,8 +11,8 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 
-/* Escribe 'len' bytes desde 'buf' al descriptor 'fd', reintentando ante
- * escrituras parciales (write() puede devolver menos de lo pedido). */
+/* Escribe 'len' bytes desde 'buf' al descriptor 'fd', reintentando si
+ * se dan escrituras parciales. */
 static int write_all(int fd, const void *buf, size_t len) {
     const unsigned char *p = (const unsigned char *)buf;
     while (len > 0) {
@@ -27,7 +27,7 @@ static int write_all(int fd, const void *buf, size_t len) {
     return 0;
 }
 
-/* Lee todo lo que llegue por 'fd' (hasta EOF) y lo vuelca directo al
+/* Lee todo lo que llegue por 'fd' (hasta EOF) y lo pasa directo al
  * archivo de salida ya abierto. Esta es la comunicacion hijo->padre
  * (IPC via pipe): cada hijo comprime su rango de archivos y manda las
  * entradas ya serializadas por el pipe; el padre las escribe en orden
@@ -41,8 +41,8 @@ static int drain_pipe_to_file(int fd, FILE *out) {
     return (n < 0) ? -1 : 0;
 }
 
-/* --- Proceso hijo: comprime su rango [start, end) y manda cada entrada
- * ya serializada por el extremo de escritura del pipe. --- */
+/* Proceso hijo: comprime su rango [start, end) y manda cada entrada
+ * ya serializada por el extremo de escritura del pipe. */
 static void worker_run(const char *dir_path, FileList *files, int start, int end, int write_fd) {
     for (int i = start; i < end; i++) {
         EncodedEntry e;
@@ -74,7 +74,8 @@ int main(int argc, char **argv) {
     int recursive = (argc >= 4 && strcmp(argv[3], "--recursivo") == 0);
     int num_workers = (argc >= 5) ? atoi(argv[4]) : 4;
     if (num_workers < 1) num_workers = 1;
-    if (num_workers > 64) num_workers = 64; /* limite de seguridad */
+    /* Sin limite fijo: el arreglo de pipes/pids se reserva dinamicamente
+     * mas abajo, del tamano exacto que se pida. */
 
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -95,8 +96,17 @@ int main(int argc, char **argv) {
     int base = files.count / num_workers;
     int extra = files.count % num_workers;
 
-    int pipes[64][2];
-    pid_t pids[64];
+    int (*pipes)[2] = malloc(sizeof(int[2]) * (size_t)num_workers);
+    pid_t *pids = malloc(sizeof(pid_t) * (size_t)num_workers);
+    if (!pipes || !pids) {
+        fprintf(stderr, "No hay memoria suficiente para %d procesos\n", num_workers);
+        free(pipes);
+        free(pids);
+        file_list_free(&files);
+        printf("RESULT ok=0\n");
+        return 1;
+    }
+
     int start = 0;
 
     for (int w = 0; w < num_workers; w++) {
@@ -105,6 +115,8 @@ int main(int argc, char **argv) {
 
         if (pipe(pipes[w]) != 0) {
             perror("pipe");
+            free(pipes);
+            free(pids);
             file_list_free(&files);
             printf("RESULT ok=0\n");
             return 1;
@@ -113,6 +125,8 @@ int main(int argc, char **argv) {
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
+            free(pipes);
+            free(pids);
             file_list_free(&files);
             printf("RESULT ok=0\n");
             return 1;
@@ -133,14 +147,15 @@ int main(int argc, char **argv) {
     /* El padre escribe la cabecera y luego drena cada pipe EN ORDEN,
      * volcando las entradas ya serializadas directo al .hzip final.
      * Los hijos corren en paralelo; si uno produce mas de lo que cabe
-     * en el buffer del pipe (64 KB tipico en Linux) antes de que el
-     * padre llegue a leerlo, simplemente se bloquea en write() hasta
-     * que el padre lo drene -- no hay riesgo de interbloqueo porque
-     * ningun hijo espera a otro hijo. */
+     * en el buffer del pipe antes de que el padre llegue a leerlo,
+     * simplemente se bloquea en write() hasta que el padre lo drene,
+     * no hay riesgo de interbloqueo porque ningun hijo espera a otro hijo. */
     FILE *out = fopen(out_path, "wb");
     if (!out) {
         fprintf(stderr, "No se pudo crear '%s'\n", out_path);
         for (int w = 0; w < num_workers; w++) close(pipes[w][0]);
+        free(pipes);
+        free(pids);
         file_list_free(&files);
         printf("RESULT ok=0\n");
         return 1;
@@ -157,8 +172,6 @@ int main(int argc, char **argv) {
 
     fclose(out);
 
-    /* Recien ahora esperamos a los hijos: ya se drenaron todos los
-     * pipes, asi que ningun hijo puede seguir bloqueado en write(). */
     int child_fail = 0;
     for (int w = 0; w < num_workers; w++) {
         int status;
@@ -166,6 +179,8 @@ int main(int argc, char **argv) {
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) child_fail = 1;
     }
 
+    free(pipes);
+    free(pids);
     file_list_free(&files);
 
     if (io_fail || child_fail) {

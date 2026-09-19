@@ -1,7 +1,7 @@
 /*
- * GUI (Fase 4) del proyecto de compresor Huffman.
+ * GUI del proyecto de compresor Huffman.
  *
- * Disenio: en vez de reimplementar la orquestacion de fork()/pthread()
+ * Diseño: en vez de reimplementar la orquestacion de fork()/pthread()
  * DENTRO del proceso de la GUI, esta interfaz invoca los 6 binarios ya
  * compilados (compresor/descompresor serial, fork y thread) como
  * subprocesos independientes con g_spawn_sync(), y lee su salida por
@@ -31,7 +31,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* ==================== Ubicar los binarios hermanos ==================== */
+/* Ubicar los binarios hermanos */
 
 static gchar *get_self_bin_dir(void) {
     char buf[4096];
@@ -41,7 +41,7 @@ static gchar *get_self_bin_dir(void) {
     return g_path_get_dirname(buf);
 }
 
-/* ==================== Ejecutar un binario y parsear su RESULT ==================== */
+/* Ejecutar un binario y parsear su RESULT */
 
 typedef struct {
     gboolean ok;
@@ -54,7 +54,7 @@ typedef struct {
 } ProgramResult;
 
 /* Busca 'key' (con el '=' incluido) dentro de 'line' y copia el valor
- * (hasta el siguiente espacio o fin de linea) en 'buf'. */
+(hasta el siguiente espacio o fin de linea) en 'buf'. */
 static gboolean extract_field(const char *line, const char *key, char *buf, size_t buf_size) {
     const char *p = strstr(line, key);
     if (!p) return FALSE;
@@ -73,9 +73,6 @@ static void program_result_free(ProgramResult *r) {
     g_free(r->raw_output);
 }
 
-/* argv debe terminar en NULL. Ejecuta de forma SINCRONA (bloqueante) --
- * por eso todo esto se corre en un hilo de fondo (ver worker_thread_func),
- * nunca directamente en el hilo principal de GTK. */
 static gboolean run_program(char **argv, ProgramResult *out) {
     memset(out, 0, sizeof(*out));
 
@@ -85,11 +82,11 @@ static gboolean run_program(char **argv, ProgramResult *out) {
     GError *error = NULL;
 
     gboolean spawned = g_spawn_sync(
-        NULL,           /* directorio de trabajo: heredar el actual */
+        NULL, /* directorio de trabajo: heredar el actual */
         argv,
-        NULL,           /* envp: heredar el ambiente actual */
+        NULL, /* envp: heredar el ambiente actual */
         0,
-        NULL, NULL,     /* child_setup */
+        NULL, NULL, /* child_setup */
         &out_buf, &err_buf, &status, &error);
 
     if (!spawned) {
@@ -132,14 +129,12 @@ static gboolean run_program(char **argv, ProgramResult *out) {
     return TRUE;
 }
 
-/* ==================== Estado de la aplicacion / widgets ==================== */
+/* Estado de la aplicacion / widgets */
 
 typedef struct {
     GtkWidget *window;
     GtkWidget *dir_label;
     GtkWidget *recursive_check;
-    GtkWidget *fork_spin;
-    GtkWidget *thread_spin;
     GtkWidget *run_button;
     GtkWidget *choose_button;
     GtkWidget *spinner;
@@ -151,10 +146,23 @@ typedef struct {
     gchar *bin_dir;
 } AppWidgets;
 
-/* Antes cada VERSION era una fila y cada METRICA era una columna. Ahora
- * esta transpuesto: cada METRICA es una fila, y cada VERSION es una
- * columna -- por eso el enum de columnas ahora es "Metrica / Serial /
- * Fork / Pthreads" en vez de las 9 metricas de antes. */
+/* El enunciado no pide que el usuario elija cuantos procesos/hilos usar,
+ * asi que la GUI lo decide sola: uno por nucleo de CPU disponible. Los 6
+ * binarios no tienen un tope fijo (usan memoria reservada dinamicamente
+ * segun lo que se les pida), pero acotamos igual a 32 aqui para no
+ * lanzar automaticamente mas procesos/hilos que nucleos "razonables"
+ * sin que el usuario lo pida a proposito.
+ 
+ * si se quieren probar valores mas altos (p. ej. 100), se hace desde la
+ * consola llamando a los binarios directamente con ese argumento. */
+static int get_default_worker_count(void) {
+    int n = g_get_num_processors();
+    if (n < 1) n = 1;
+    if (n > 32) n = 32;
+    return n;
+}
+
+/* Cada METRICA es una fila, y cada VERSION es una */
 enum {
     COL_METRIC = 0,
     COL_SERIAL,
@@ -163,7 +171,7 @@ enum {
     N_COLS
 };
 
-/* Cada METRICA es ahora una fila de la tabla, en este orden. */
+/* Cada METRICA es una fila de la tabla, en este orden. */
 enum {
     ROW_HEALTH = 0,
     ROW_TIME_COMPRESS,
@@ -187,7 +195,7 @@ static const char *ROW_LABELS[N_ROWS] = {
     "Radio de compresión",
 };
 
-/* ==================== Resultado completo de correr una version ==================== */
+/* ---Resultado completo de correr una version--- */
 
 typedef struct {
     ProgramResult compress;
@@ -200,7 +208,7 @@ typedef struct {
     gchar *error_message; /* si algo fallo de forma irrecuperable */
 } AllResults;
 
-/* ==================== Actualizar la UI desde el hilo principal ==================== */
+/* ---Actualizar la UI desde el hilo principal--- */
 
 static gboolean update_status_idle(gpointer data) {
     AppWidgets *app = ((gpointer *)data)[0];
@@ -232,12 +240,9 @@ static gchar *format_bytes(guint64 bytes) {
 }
 
 /* Calcula las N_ROWS metricas de UNA version y las deja en 'out',
- * en el mismo orden que ROW_LABELS -- esto es lo que despues se vuelca
- * como una COLUMNA de la tabla transpuesta. 'serial_c_elapsed' /
  * 'serial_d_elapsed' son los tiempos de la corrida serial, usados como
  * base para el % de aceleracion (para la version serial misma da
- * +0.0%, que es lo esperado: es la base de comparacion).
- * El caller debe liberar cada string con g_free (ver free_version_values). */
+ * +0.0%, que es lo esperado: es la base de comparacion). */
 static void format_version_values(VersionRun *run, double serial_c_elapsed,
                                    double serial_d_elapsed, gchar *out[N_ROWS]) {
     if (!run->compress.ok || !run->decompress.ok) {
@@ -349,7 +354,7 @@ static gboolean finish_run_idle(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
-/* ==================== Hilo de fondo: corre las 6 combinaciones ==================== */
+/* ---Hilo de fondo: corre las 6 combinaciones--- */
 
 typedef struct {
     AppWidgets *app;
@@ -370,9 +375,9 @@ static void run_compress(AppWidgets *app, const char *bin_name, const char *dir_
 
     gchar *workers_str = NULL;
     if (workers >= 0) {
-        /* Necesitamos un placeholder en la posicion de --recursivo para
+        /* Se necesita un placeholder en la posicion de --recursivo para
          * que el argumento de workers/hilos caiga en la posicion
-         * correcta (ver como parsean argv los programas fork/thread). */
+         * correcta. */
         g_ptr_array_add(args, recursive ? (gpointer)"--recursivo" : (gpointer)"");
         workers_str = g_strdup_printf("%d", workers);
         g_ptr_array_add(args, workers_str);
@@ -473,7 +478,7 @@ done:
     return NULL;
 }
 
-/* ==================== Callbacks de la UI ==================== */
+/* ---Callbacks de la UI--- */
 
 static void on_run_clicked(GtkButton *button, gpointer user_data) {
     (void)button;
@@ -494,8 +499,8 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
     p->app = app;
     p->dir_path = g_strdup(app->selected_dir);
     p->recursive = gtk_check_button_get_active(GTK_CHECK_BUTTON(app->recursive_check));
-    p->fork_workers = (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(app->fork_spin));
-    p->pthread_threads = (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(app->thread_spin));
+    p->fork_workers = get_default_worker_count();
+    p->pthread_threads = get_default_worker_count();
 
     GThread *thread = g_thread_new("hzip-run", worker_thread_func, p);
     g_thread_unref(thread);
@@ -527,17 +532,7 @@ static void on_choose_clicked(GtkButton *button, gpointer user_data) {
     g_object_unref(dialog);
 }
 
-/* ==================== Construccion de la ventana ==================== */
-
-static GtkWidget *make_labeled_row(const char *label_text, GtkWidget *control) {
-    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    GtkWidget *label = gtk_label_new(label_text);
-    gtk_widget_set_halign(label, GTK_ALIGN_START);
-    gtk_widget_set_size_request(label, 180, -1);
-    gtk_box_append(GTK_BOX(row), label);
-    gtk_box_append(GTK_BOX(row), control);
-    return row;
-}
+/* ---Construccion de la ventana--- */
 
 static void activate(GtkApplication *gtk_app, gpointer user_data) {
     (void)user_data;
@@ -555,7 +550,7 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
     gtk_widget_set_margin_bottom(root, 16);
     gtk_window_set_child(GTK_WINDOW(app->window), root);
 
-    /* --- Seleccion de directorio --- */
+    /* ---Seleccion de directorio--- */
     GtkWidget *dir_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     app->choose_button = gtk_button_new_with_label("Elegir directorio...");
     app->dir_label = gtk_label_new("(ningun directorio seleccionado)");
@@ -566,20 +561,12 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
     gtk_box_append(GTK_BOX(dir_row), app->dir_label);
     gtk_box_append(GTK_BOX(root), dir_row);
 
-    /* --- Opciones --- */
+    /* ---Opciones--- */
     app->recursive_check = gtk_check_button_new_with_label("Incluir subdirectorios (--recursivo)");
     gtk_check_button_set_active(GTK_CHECK_BUTTON(app->recursive_check), TRUE);
     gtk_box_append(GTK_BOX(root), app->recursive_check);
 
-    app->fork_spin = gtk_spin_button_new_with_range(1, 32, 1);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(app->fork_spin), 4);
-    gtk_box_append(GTK_BOX(root), make_labeled_row("Procesos (fork):", app->fork_spin));
-
-    app->thread_spin = gtk_spin_button_new_with_range(1, 32, 1);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(app->thread_spin), 4);
-    gtk_box_append(GTK_BOX(root), make_labeled_row("Hilos (pthreads):", app->thread_spin));
-
-    /* --- Boton de ejecucion + spinner --- */
+    /* ---Boton de ejecucion + spinner--- */
     GtkWidget *run_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     app->run_button = gtk_button_new_with_label("Comprimir y descomprimir con las 3 versiones");
     gtk_widget_add_css_class(app->run_button, "suggested-action");
@@ -595,7 +582,7 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
     gtk_label_set_wrap(GTK_LABEL(app->status_label), TRUE);
     gtk_box_append(GTK_BOX(root), app->status_label);
 
-    /* --- Tabla comparativa (transpuesta: filas = metricas, columnas = version) --- */
+    /* ---Tabla comparativa (transpuesta: filas = metricas, columnas = version)--- */
     app->list_store = gtk_list_store_new(N_COLS,
         G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
 
@@ -618,7 +605,7 @@ static void activate(GtkApplication *gtk_app, gpointer user_data) {
     gtk_widget_set_size_request(tree_scroll, -1, 160);
     gtk_box_append(GTK_BOX(root), tree_scroll);
 
-    /* --- Log detallado (colapsable) --- */
+    /* ---Log detallado (colapsable)--- */
     GtkWidget *expander = gtk_expander_new("Ver salida detallada de las 6 corridas");
     app->log_view = gtk_text_view_new();
     gtk_text_view_set_editable(GTK_TEXT_VIEW(app->log_view), FALSE);

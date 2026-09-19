@@ -7,8 +7,8 @@
 #include <time.h>
 #include <pthread.h>
 
-/* --- Cola de trabajo y contador compartido de verificados,
- * ambos protegidos por el mismo mutex. --- */
+/* ---Cola de trabajo y contador compartido de verificados,
+ * ambos protegidos por el mismo mutex.--- */
 typedef struct {
     long *offsets;
     uint32_t total;
@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
     const char *out_dir = argv[2];
     int num_threads = (argc >= 4) ? atoi(argv[3]) : 4;
     if (num_threads < 1) num_threads = 1;
-    if (num_threads > 64) num_threads = 64;
+    /* Sin limite fijo */
 
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -105,8 +105,17 @@ int main(int argc, char **argv) {
     queue.total_verified = 0;
     pthread_mutex_init(&queue.lock, NULL);
 
-    pthread_t threads[64];
-    ThreadArg args[64];
+    pthread_t *threads = malloc(sizeof(pthread_t) * (size_t)num_threads);
+    ThreadArg *args = malloc(sizeof(ThreadArg) * (size_t)num_threads);
+    if (!threads || !args) {
+        fprintf(stderr, "No hay memoria suficiente para %d hilos\n", num_threads);
+        free(threads);
+        free(args);
+        pthread_mutex_destroy(&queue.lock);
+        free(offsets);
+        printf("RESULT ok=0\n");
+        return 1;
+    }
 
     for (int t = 0; t < num_threads; t++) {
         args[t].archive_path = archive_path;
@@ -119,6 +128,8 @@ int main(int argc, char **argv) {
         pthread_join(threads[t], NULL);
     }
 
+    free(threads);
+    free(args);
     pthread_mutex_destroy(&queue.lock);
     free(offsets);
 

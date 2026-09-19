@@ -4,7 +4,7 @@
 
 typedef struct HNode {
     uint64_t freq;
-    int symbol;          /* 0-255 si es hoja, -1 si es interno */
+    int symbol; /* 0-255 si es hoja, -1 si es interno */
     struct HNode *left;
     struct HNode *right;
 } HNode;
@@ -25,9 +25,8 @@ static void hnode_free(HNode *n) {
     free(n);
 }
 
-/* Cola de prioridad muy simple (arreglo + busqueda lineal del minimo).
- * Con a lo sumo 256 simbolos, un heap real es innecesario: O(n^2) aqui
- * es trivial en tiempo de ejecucion. */
+/* Cola de prioridad simple (arreglo + busqueda lineal del minimo). 
+Con a lo sumo 256 simbolos, se consigue O(n^2) en tiempo de ejecucion sin necesidad de un heap real */
 typedef struct {
     HNode **items;
     int count;
@@ -73,7 +72,7 @@ static HNode *build_tree(const uint64_t freq[256]) {
     }
 
     /* Caso especial: un solo simbolo distinto. Se crea un nodo interno
-     * artificial para que el simbolo tenga codigo de longitud 1 (no 0). */
+    artificial para que el simbolo tenga codigo de longitud 1 (no 0). */
     if (q.count == 1) {
         HNode *only = q.items[0];
         HNode *root = hnode_new(only->freq, -1, only, NULL);
@@ -94,7 +93,7 @@ static HNode *build_tree(const uint64_t freq[256]) {
 }
 
 typedef struct {
-    unsigned char bits[256]; /* 0/1 por posicion, hasta 256 bits de profundidad (mas que suficiente) */
+    unsigned char bits[256]; /* 0/1 por posicion, hasta 256 bits de profundidad */
     int len;
 } Code;
 
@@ -122,7 +121,7 @@ static void build_codes(HNode *node, Code *codes, unsigned char *prefix, int dep
     }
 }
 
-/* --- Empaquetado de bits en bytes (MSB primero) --- */
+/* Empaquetado de bits en bytes (MSB primero) */
 
 typedef struct {
     unsigned char *buf;

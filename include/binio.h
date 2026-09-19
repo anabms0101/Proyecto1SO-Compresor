@@ -7,7 +7,7 @@
 /* Helpers de lectura/escritura binaria portable (little-endian explicito,
  * byte a byte, para no depender del endianness de la maquina).
  * Usados por archive.c y por TODAS las versiones (serial, fork, thread)
- * para leer/escribir el formato .hzip, asi evitamos tener 4 copias del
+ * para leer/escribir el formato .hzip, asi se evita tener 4 copias del
  * mismo codigo. */
 
 void write_u32(FILE *f, uint32_t v);

@@ -7,8 +7,8 @@
 #define MD5_DIGEST_SIZE 16
 
 typedef struct {
-    uint32_t state[4];      /* A, B, C, D */
-    uint64_t bit_count;     /* total bits procesados */
+    uint32_t state[4]; /* A, B, C, D */
+    uint64_t bit_count; /* total bits procesados */
     unsigned char buffer[64];
     size_t buffer_len;
 } MD5_CTX;

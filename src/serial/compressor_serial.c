@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
                100.0 * (double)compressed_size / (double)original_size);
     }
 
-    /* Linea final en formato facil de parsear (usada por la GUI, Fase 4) */
+    /* Linea final en formato facil de parsear (usada por la GUI) */
     printf("RESULT ok=1 elapsed=%.6f original_size=%llu compressed_size=%llu\n",
            elapsed, (unsigned long long)original_size, (unsigned long long)compressed_size);
 

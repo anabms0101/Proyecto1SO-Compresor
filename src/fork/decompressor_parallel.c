@@ -10,7 +10,7 @@
 #include <sys/types.h>
 
 /* El hijo procesa su rango y reporta cuantas firmas verifico via pipe
- * (IPC): un solo int con el conteo local. */
+(IPC): un solo int con el conteo local. */
 static void worker_run(const char *archive_path, const char *out_dir,
                         long *offsets, int start, int end, int write_fd) {
     FILE *in = fopen(archive_path, "rb");
@@ -26,7 +26,7 @@ static void worker_run(const char *archive_path, const char *out_dir,
     }
 
     if (write(write_fd, &verified, sizeof(int)) != sizeof(int)) {
-        /* Poco que hacer si falla el pipe a esta altura; el padre lo
+        /* Si falla el pipe a esta altura, el padre lo
          * detecta porque read() no recibira el entero esperado. */
     }
     close(write_fd);
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     const char *out_dir = argv[2];
     int num_workers = (argc >= 4) ? atoi(argv[3]) : 4;
     if (num_workers < 1) num_workers = 1;
-    if (num_workers > 32) num_workers = 32;
+    /* Sin limite fijo */
 
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -70,8 +70,17 @@ int main(int argc, char **argv) {
     int base = total / num_workers;
     int extra = total % num_workers;
 
-    int pipes[32][2];
-    pid_t pids[32];
+    int (*pipes)[2] = malloc(sizeof(int[2]) * (size_t)num_workers);
+    pid_t *pids = malloc(sizeof(pid_t) * (size_t)num_workers);
+    if (!pipes || !pids) {
+        fprintf(stderr, "No hay memoria suficiente para %d procesos\n", num_workers);
+        free(pipes);
+        free(pids);
+        free(offsets);
+        printf("RESULT ok=0\n");
+        return 1;
+    }
+
     int start = 0;
 
     for (int w = 0; w < num_workers; w++) {
@@ -80,6 +89,8 @@ int main(int argc, char **argv) {
 
         if (pipe(pipes[w]) != 0) {
             perror("pipe");
+            free(pipes);
+            free(pids);
             free(offsets);
             printf("RESULT ok=0\n");
             return 1;
@@ -88,6 +99,8 @@ int main(int argc, char **argv) {
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
+            free(pipes);
+            free(pids);
             free(offsets);
             printf("RESULT ok=0\n");
             return 1;
@@ -116,6 +129,8 @@ int main(int argc, char **argv) {
         waitpid(pids[w], &status, 0);
     }
 
+    free(pipes);
+    free(pids);
     free(offsets);
 
     clock_gettime(CLOCK_MONOTONIC, &t1);

@@ -8,7 +8,7 @@
 #include <time.h>
 #include <pthread.h>
 
-/* --- Cola de trabajo compartida entre hilos ---
+/* ---Cola de trabajo compartida entre hilos---
  * Un solo entero (next_index) protegido por mutex: cada hilo lo lee y
  * lo incrementa de forma atomica para "tomar" el siguiente archivo. */
 typedef struct {
@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     int recursive = (argc >= 4 && strcmp(argv[3], "--recursivo") == 0);
     int num_threads = (argc >= 5) ? atoi(argv[4]) : 4;
     if (num_threads < 1) num_threads = 1;
-    if (num_threads > 64) num_threads = 64;
+    /* Sin limite fijo */
 
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -97,8 +97,18 @@ int main(int argc, char **argv) {
     queue.error_flag = 0;
     pthread_mutex_init(&queue.lock, NULL);
 
-    pthread_t threads[64];
-    ThreadArg args[64];
+    pthread_t *threads = malloc(sizeof(pthread_t) * (size_t)num_threads);
+    ThreadArg *args = malloc(sizeof(ThreadArg) * (size_t)num_threads);
+    if (!threads || !args) {
+        fprintf(stderr, "No hay memoria suficiente para %d hilos\n", num_threads);
+        free(threads);
+        free(args);
+        free(results);
+        pthread_mutex_destroy(&queue.lock);
+        file_list_free(&files);
+        printf("RESULT ok=0\n");
+        return 1;
+    }
 
     for (int t = 0; t < num_threads; t++) {
         args[t].dir_path = dir_path;
@@ -111,6 +121,8 @@ int main(int argc, char **argv) {
         pthread_join(threads[t], NULL);
     }
 
+    free(threads);
+    free(args);
     pthread_mutex_destroy(&queue.lock);
 
     if (queue.error_flag) {
