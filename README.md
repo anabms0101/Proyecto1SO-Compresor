@@ -26,6 +26,11 @@ compila a `bin/gui_comparador`. Ver seccion "La GUI" mas abajo.
 **Compilar y correr TODO:**
 
 ```bash
+#Primero debe verificar que este en uruario root
+whoami
+#y si no esta en root:
+su -
+#en un momento le preguntara si continuar, ahi se pone s o y de si
 #0. Instalar dependencias
 sudo apt update
 sudo apt install build-essential libgtk-4-dev
