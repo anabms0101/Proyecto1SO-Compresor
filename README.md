@@ -35,6 +35,9 @@ su -
 sudo apt update
 sudo apt install build-essential libgtk-4-dev
 
+#se sale del usuario root
+exit
+
 #1. Abrir la carpeta con el proyecto
 cd Downloads
 cd Proyecto1SO-Compresor-main
