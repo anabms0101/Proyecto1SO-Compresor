@@ -24,7 +24,7 @@ compila a `bin/gui_comparador`. Ver seccion "La GUI" mas abajo.
 ⬜ Reporte LaTeX
 
 **Compilar y correr TODO:**
-
+Antes de iniciar, se debe descomprimir el archivo .zip de la descarga de github, del branch Compresor_Optimized+GUI
 ```bash
 #Primero debe verificar que este en uruario root
 whoami
