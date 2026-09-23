@@ -32,7 +32,7 @@ make all              # serial + fork + thread + gui (requiere libgtk-4-dev)
 
 ./bin/compresor_serial <directorio_origen> <salida.hzip> [--recursivo]
 ./bin/descompresor_serial <salida.hzip> <directorio_destino>
-./bin/gui_comparador   # interfaz grafica (ver seccion "La GUI" mas arriba)
+./bin/gui_comparador   # interfaz grafica
 ```
 
 ## La GUI
