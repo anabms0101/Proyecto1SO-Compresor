@@ -1,37 +1,15 @@
 # Proyecto Compresor Huffman — Sistemas Operativos
 
-## Estado actual
+**Compilar y correr:**
 
-**Fase 1 (serial) completa**
-Los módulos comunes (MD5, Huffman, formato de archivo, utilidades de
-directorio) están terminados y son la base que reutilizarán las versiones
-paralela (fork) y concurrente (pthreads). El compresor/descompresor serial
-compila limpio y fue probado con:
-- Texto normal, texto con acentos/UTF-8
-- Un archivo vacío
-- Un archivo de un solo carácter repetido (caso especial del árbol de Huffman)
-- Un archivo binario aleatorio
-- Un subdirectorio (modo `--recursivo`)
-
-Resultado: 5/5 firmas MD5 verificadas, `diff -rq` entre directorio original
-y descomprimido sin diferencias.
-
-✅ **Fase 2 (fork + IPC) — completa.** Ver seccion "Correcciones
-aplicadas" mas abajo (compresor y descompresor usan `pipe()`).
-✅ **Fase 3 (pthreads + memoria compartida) — completa.**
-✅ **Fase 4 (GUI) — completa.** Interfaz en GTK4 (`src/gui/main_gui.c`),
-compila a `bin/gui_comparador`. Ver seccion "La GUI" mas abajo.
-⬜ Reporte LaTeX
-
-**Compilar y correr TODO:**
-
-Antes de iniciar, se debe descomprimir el archivo .zip de la descarga de github, del branch Compresor_Optimized+GUI
+Antes de iniciar, se debe descomprimir el archivo .zip de la descarga de github:
 ```bash
-#Primero debe verificar que este en uruario root
+#Primero debe verificar que este en usuario root
 whoami
 #y si no esta en root:
 su -
-#en un momento le preguntara si continuar, ahi se pone s o y de si
+#En un momento le preguntara si continuar, ahi se pone "s" o "y" para confirmar.
+
 #0. Instalar dependencias
 sudo apt update
 sudo apt install build-essential libgtk-4-dev
