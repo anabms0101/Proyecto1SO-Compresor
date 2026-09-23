@@ -1,7 +1,6 @@
 # Proyecto Compresor Huffman — Sistemas Operativos
 
-**Compilar y correr:**
-
+## Compilar y probar
 Antes de iniciar, se debe descomprimir el archivo .zip de la descarga de github:
 ```bash
 #Primero debe verificar que este en usuario root
@@ -25,6 +24,15 @@ cd Proyecto1SO-Compresor-main
 make clean
 make all
 ./bin/gui_comparador
+```
+
+Probar de forma individual cada versión:
+```bash
+make all              # serial + fork + thread + gui (requiere libgtk-4-dev)
+
+./bin/compresor_serial <directorio_origen> <salida.hzip> [--recursivo]
+./bin/descompresor_serial <salida.hzip> <directorio_destino>
+./bin/gui_comparador   # interfaz grafica (ver seccion "La GUI" mas arriba)
 ```
 
 ## La GUI
@@ -191,34 +199,7 @@ por cada archivo:
   uint64 compressed_bytes + data[...]       bitstream de Huffman empaquetado
 ```
 
-**Decisión de diseño clave:** en vez de serializar el árbol de Huffman
-(código canónico, etc.), se guarda la tabla de 256 frecuencias. El
-decodificador reconstruye el **mismo árbol** determinísticamente a partir
-de las frecuencias (mismo algoritmo de construcción = mismo árbol). Es
-más simple de implementar y depurar, y el costo extra (256 × 8 bytes =
-2 KB por archivo) es insignificante frente al tamaño de los libros de
-Gutenberg. Esto es importante para el reporte: hay que **explicar y
-justificar** esta decisión en la sección de "Descripción de la
-implementación del algoritmo de Huffman".
-
 Este mismo formato/API (`archive_compress_directory`, `archive_extract`)
 lo van a llamar las 3 versiones (serial, fork, pthread) — lo que cambia
 entre ellas es *cómo* se reparte el trabajo de comprimir/descomprimir
 cada archivo, no el formato del contenedor.
-
-## Compilar y probar
-
-```bash
-make all              # serial + fork + thread + gui (requiere libgtk-4-dev)
-
-./bin/compresor_serial <directorio_origen> <salida.hzip> [--recursivo]
-./bin/descompresor_serial <salida.hzip> <directorio_destino>
-./bin/gui_comparador   # interfaz grafica (ver seccion "La GUI" mas arriba)
-```
-
-## Cosas aún pendientes
-
-1. **Reporte LaTeX:** con la plantilla del curso, secciones exactas del
-   enunciado, y cuidado especial con las citas (toda función/algoritmo
-   explicado que no sea de autoría propia —p. ej. `pipe()`, `fork()`,
-   Huffman— debe citarse en formato APA 7).
