@@ -171,7 +171,7 @@ src/gui/             Fase 4: interfaz gráfica (GTK) que invoca las 3
                      versiones y arma la tabla comparativa
 
 data/                Aquí van los 100 archivos .txt descargados del top de
-                     Project Gutenberg (no se incluyen en este repo)
+                     Project Gutenberg (aparece como data_de_prueba en este repo)
 ```
 
 ## El formato `.hzip`
