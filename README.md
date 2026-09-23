@@ -1,5 +1,5 @@
 # Proyecto Compresor Huffman — Sistemas Operativos
-
+ 
 ## Compilar y probar
 Antes de iniciar, se debe descomprimir el archivo .zip de la descarga de github:
 ```bash
@@ -7,46 +7,116 @@ Antes de iniciar, se debe descomprimir el archivo .zip de la descarga de github:
 whoami
 #y si no esta en root:
 su -
-#En un momento le preguntara si continuar, ahi se pone "s" o "y" para confirmar.
-
+#En un momento le preguntara si continuar, ahí se pone "s" o "y" para confirmar.
+ 
 #0. Instalar dependencias
 sudo apt update
 sudo apt install build-essential libgtk-4-dev
-
+ 
 #se sale del usuario root
 exit
-
+ 
 #1. Abrir la carpeta con el proyecto
 cd Downloads
 cd Proyecto1SO-Compresor-main
-
+ 
 #2. Compilar
 make clean
 make all
 ./bin/gui_comparador
 ```
-
-Probar de forma individual cada versión:
+ 
+## Probar cada versión individualmente
+ 
+Los 6 binarios quedan en `bin/` después de `make all`. Todos siguen la
+misma convención: primero el origen, después el destino, y opcionalmente
+la cantidad de procesos/hilos al final (si se omite, usan 4 por defecto).
+No hay un límite fijo para esa cantidad — se puede pedir 1, 100 o
+cualquier otro número que el sistema operativo pueda darte (cada
+programa reserva en memoria dinámica exactamente lo que necesita).
+ 
+### 1. Versión serial
+ 
 ```bash
-make all              # serial + fork + thread + gui (requiere libgtk-4-dev)
-
+./bin/compresor_serial ~/data ~/salida_serial.hzip --recursivo
+./bin/descompresor_serial ~/salida_serial.hzip ~/destino_serial
+diff -rq ~/data ~/destino_serial && echo "SERIAL: OK, idéntico"
+```
+ 
+### 2. Versión paralela con `fork()` + IPC (pipes)
+ 
+El último argumento es la cantidad de **procesos**:
+ 
+```bash
+./bin/compressor_parallel ~/data ~/salida_fork.hzip --recursivo 4
+./bin/decompressor_parallel ~/salida_fork.hzip ~/destino_fork 4
+diff -rq ~/data ~/destino_fork && echo "FORK: OK, idéntico"
+```
+ 
+Se puede probar con cualquier N, por ejemplo 1, 16 o 100:
+ 
+```bash
+./bin/compressor_parallel ~/data ~/salida_fork_100.hzip --recursivo 100
+```
+ 
+**Si el directorio NO es recursivo**, hay que dejar el lugar del flag vacío
+(`""`) para que el número de procesos caiga en la posición correcta:
+ 
+```bash
+./bin/compressor_parallel ~/data ~/salida_fork.hzip "" 4
+```
+ 
+### 3. Versión concurrente con `pthreads` + memoria compartida
+ 
+Mismo formato de argumentos, pero el último número es la cantidad de
+**hilos**:
+ 
+```bash
+./bin/compressor_thread ~/data ~/salida_thread.hzip --recursivo 4
+./bin/decompressor_thread ~/salida_thread.hzip ~/destino_thread 4
+diff -rq ~/data ~/destino_thread && echo "THREAD: OK, idéntico"
+```
+ 
+### 4. Confirmar que las 3 versiones dan exactamente el mismo resultado
+ 
+```bash
+md5sum ~/salida_serial.hzip ~/salida_fork.hzip ~/salida_thread.hzip
+```
+ 
+Los tres MD5 deberían ser idénticos, sin importar con cuántos
+procesos/hilos se haya comprimido cada uno.
+ 
+### Resumen rápido de los 6 binarios
+ 
+```bash
+# Version secuencial
 ./bin/compresor_serial <directorio_origen> <salida.hzip> [--recursivo]
 ./bin/descompresor_serial <salida.hzip> <directorio_destino>
-./bin/gui_comparador   # interfaz grafica
+ 
+# Version paralela con fork() + IPC (pipes)
+./bin/compressor_parallel <directorio_origen> <salida.hzip> [--recursivo] [N_procesos]
+./bin/decompressor_parallel <salida.hzip> <directorio_destino> [N_procesos]
+ 
+# Version concurrente con pthreads + memoria compartida
+./bin/compressor_thread <directorio_origen> <salida.hzip> [--recursivo] [N_hilos]
+./bin/decompressor_thread <salida.hzip> <directorio_destino> [N_hilos]
+ 
+# Interfaz grafica (compara las 3 versiones automaticamente)
+./bin/gui_comparador
 ```
-
+ 
 ## La GUI
-
+ 
 **Requisito previo:** los headers de desarrollo de GTK4 no vienen
 instalados por defecto ni siquiera con GNOME instalado — hay que
 agregarlos antes de compilar:
-
+ 
 ```bash
 sudo apt install libgtk-4-dev
 ```
-
+ 
 **Compilar y correr:**
-
+ 
 ```bash
 make gui              # compila serial+fork+thread (si falta) y la GUI
 ./bin/gui_comparador
@@ -149,27 +219,34 @@ marca como error en la tabla en vez de mostrar numeros inventados.
    MD5) sobre el mismo directorio de prueba.
 
 ## Arquitectura
-
+ 
 ```
 include/            Headers compartidos por TODAS las versiones
   md5.h              MD5 (RFC 1321), implementado desde la especificación
   huffman.h          Compresión/descompresión Huffman en memoria
   archive.h          Formato contenedor .hzip (múltiples archivos + metadatos)
   fileutils.h        Listar directorios, leer/escribir archivos, mkdir -p
-
+  binio.h            Lectura/escritura binaria little-endian compartida
+  entry_codec.h       Comprimir/leer una entrada del .hzip (usado por fork y thread)
+ 
 src/common/          Implementación de los headers de arriba (se reutiliza
                      tal cual en las 3 versiones: serial, fork, pthread)
-
-src/serial/          Fase 1: compresor_serial.c / decompressor_serial.c
-src/parallel_fork/   Fase 2: un proceso hijo por archivo (o por lote),
-                     comunicación con el padre por pipe
-src/parallel_thread/ Fase 3: un pool de threads, memoria compartida entre
-                     threads del mismo proceso + mutex para sincronizar
-src/gui/             Fase 4: interfaz gráfica (GTK) que invoca las 3
-                     versiones y arma la tabla comparativa
-
+ 
+src/serial/          Fase 1: compresor_serial.c / descompresor_serial.c
+src/fork/            Fase 2: compressor_parallel.c / decompressor_parallel.c
+                     — reparte los archivos en N procesos con fork(),
+                     comunicación con el padre por pipe (IPC)
+src/thread/          Fase 3: compressor_thread.c / decompressor_thread.c
+                     — pool de N hilos con pthreads, cola de trabajo
+                     compartida protegida con mutex
+src/gui/             Fase 4: interfaz gráfica (GTK4) que invoca los 6
+                     binarios como subprocesos y arma la tabla comparativa
+ 
 data/                Aquí van los 100 archivos .txt descargados del top de
                      Project Gutenberg (aparece como data_de_prueba en este repo)
+ 
+scripts/             descargar_corpus.sh (baja el top 100 de Gutenberg) y
+                     benchmark_n.sh (mide tiempos variando N procesos/hilos)
 ```
 
 ## El formato `.hzip`
