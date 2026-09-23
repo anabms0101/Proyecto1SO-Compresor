@@ -40,4 +40,12 @@ int archive_compress_directory(const char *dir_path, const char *out_path, int r
 int archive_extract(const char *archive_path, const char *out_dir,
                      int *verified_count, int *total_count);
 
+/* Abre 'archive_path' y calcula el offset (desde el inicio del archivo)
+ * donde comienza cada entrada, SIN descomprimir nada todavia. Sirve para
+ * repartir el trabajo de descompresion entre procesos/hilos: cada uno
+ * puede hacer fseek() directo a su rango de entradas.
+ * Devuelve 0 en exito (out_offsets/out_count quedan listos, el caller
+ * debe hacer free(*out_offsets)), -1 en error. */
+int archive_build_index(const char *archive_path, long **out_offsets, uint32_t *out_count);
+
 #endif /* ARCHIVE_H */

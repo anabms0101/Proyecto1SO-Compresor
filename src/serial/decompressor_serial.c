@@ -17,6 +17,7 @@ int main(int argc, char **argv) {
     int verified = 0, total = 0;
     if (archive_extract(archive_path, out_dir, &verified, &total) != 0) {
         fprintf(stderr, "Error al descomprimir '%s'\n", archive_path);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
@@ -27,5 +28,8 @@ int main(int argc, char **argv) {
     printf("Firmas verificadas: %d/%d (%.2f%% de salud)\n",
            verified, total, total > 0 ? (100.0 * verified / total) : 100.0);
     printf("Tiempo total: %.4f s\n", elapsed);
+
+    printf("RESULT ok=1 elapsed=%.6f verified=%d total=%d\n", elapsed, verified, total);
+
     return 0;
 }

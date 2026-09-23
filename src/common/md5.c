@@ -1,10 +1,9 @@
 /*
- * Implementacion del algoritmo MD5 (RFC 1321), escrita a partir de la
- * especificacion publica del algoritmo para el Proyecto de Compresor
- * (Sistemas Operativos). No se copio codigo de terceros: las constantes
- * (tabla K y desplazamientos S) provienen directamente del estandar
- * publicado en el RFC 1321.
- */
+Implementacion del algoritmo MD5 (RFC 1321), escrita a partir de la
+especificacion del proyecto. No se copio codigo de terceros: las 
+constantes (tabla K y desplazamientos S) provienen directamente del 
+estandar publicado en el RFC 1321.
+*/
 
 #include "md5.h"
 #include <stdio.h>
@@ -118,7 +117,7 @@ void md5_update(MD5_CTX *ctx, const unsigned char *data, size_t len) {
 }
 
 /* Agrega un solo byte al buffer y procesa el bloque si se llena, sin
- * tocar bit_count (usado solo para el padding en md5_final). */
+tocar bit_count (usado solo para el padding en md5_final). */
 static void md5_feed_byte(MD5_CTX *ctx, unsigned char byte) {
     ctx->buffer[ctx->buffer_len++] = byte;
     if (ctx->buffer_len == 64) {

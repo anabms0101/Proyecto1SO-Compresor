@@ -1,82 +1,64 @@
 #include "archive.h"
 #include "fileutils.h"
-#include "huffman.h"
+#include "entry_codec.h"
+#include "binio.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 
-/* --- Helpers de escritura binaria (iguales a los de archive.c) --- */
-static void write_u32(FILE *f, uint32_t v) {
-    unsigned char b[4] = { (unsigned char)(v), (unsigned char)(v >> 8),
-                            (unsigned char)(v >> 16), (unsigned char)(v >> 24) };
-    fwrite(b, 1, 4, f);
-}
-
-static void write_u64(FILE *f, uint64_t v) {
-    unsigned char b[8];
-    for (int i = 0; i < 8; i++) b[i] = (unsigned char)(v >> (8 * i));
-    fwrite(b, 1, 8, f);
-}
-
-/* Comprime un solo archivo y escribe su "entrada" (mismo formato que
-   usa archive_compress_directory) en el FILE* out ya abierto. */
-static int compress_one_entry(const char *dir_path, const char *rel_path, FILE *out) {
-    char full_path[4096];
-    join_path(full_path, sizeof(full_path), dir_path, rel_path);
-
-    unsigned char *content = NULL;
-    uint64_t content_len = 0;
-    if (read_entire_file(full_path, &content, &content_len) != 0) {
-        return -1;
-    }
-
-    unsigned char md5[MD5_DIGEST_SIZE];
-    MD5_CTX ctx;
-    md5_init(&ctx);
-    md5_update(&ctx, content, content_len);
-    md5_final(&ctx, md5);
-
-    HuffmanResult hr;
-    if (huffman_compress(content, content_len, &hr) != 0) {
-        free(content);
-        return -1;
-    }
-
-    uint32_t name_len = (uint32_t)strlen(rel_path);
-    write_u32(out, name_len);
-    fwrite(rel_path, 1, name_len, out);
-    write_u64(out, content_len);
-    fwrite(md5, 1, MD5_DIGEST_SIZE, out);
-    for (int k = 0; k < 256; k++) write_u64(out, hr.freq[k]);
-    write_u64(out, hr.bit_count);
-    write_u64(out, hr.data_len);
-    if (hr.data_len > 0) fwrite(hr.data, 1, hr.data_len, out);
-
-    huffman_result_free(&hr);
-    free(content);
-    return 0;
-}
-
-/* Cada hijo comprime el rango [start, end) y escribe sus entradas
-   en un archivo temporal propio. */
-static int worker_run(const char *dir_path, FileList *files, int start, int end,
-                       const char *tmp_path) {
-    FILE *out = fopen(tmp_path, "wb");
-    if (!out) return -1;
-
-    for (int i = start; i < end; i++) {
-        if (compress_one_entry(dir_path, files->paths[i], out) != 0) {
-            fclose(out);
+/* Escribe 'len' bytes desde 'buf' al descriptor 'fd', reintentando si
+ * se dan escrituras parciales. */
+static int write_all(int fd, const void *buf, size_t len) {
+    const unsigned char *p = (const unsigned char *)buf;
+    while (len > 0) {
+        ssize_t n = write(fd, p, len);
+        if (n < 0) {
+            if (errno == EINTR) continue;
             return -1;
         }
+        p += (size_t)n;
+        len -= (size_t)n;
     }
-
-    fclose(out);
     return 0;
+}
+
+/* Lee todo lo que llegue por 'fd' (hasta EOF) y lo pasa directo al
+ * archivo de salida ya abierto. Esta es la comunicacion hijo->padre
+ * (IPC via pipe): cada hijo comprime su rango de archivos y manda las
+ * entradas ya serializadas por el pipe; el padre las escribe en orden
+ * al .hzip final a medida que las recibe. */
+static int drain_pipe_to_file(int fd, FILE *out) {
+    unsigned char buf[65536];
+    ssize_t n;
+    while ((n = read(fd, buf, sizeof(buf))) > 0) {
+        if (fwrite(buf, 1, (size_t)n, out) != (size_t)n) return -1;
+    }
+    return (n < 0) ? -1 : 0;
+}
+
+/* Proceso hijo: comprime su rango [start, end) y manda cada entrada
+ * ya serializada por el extremo de escritura del pipe. */
+static void worker_run(const char *dir_path, FileList *files, int start, int end, int write_fd) {
+    for (int i = start; i < end; i++) {
+        EncodedEntry e;
+        if (entry_encode(dir_path, files->paths[i], &e) != 0) {
+            close(write_fd);
+            _exit(1);
+        }
+        int rc = write_all(write_fd, e.buf, e.len);
+        entry_encoded_free(&e);
+        if (rc != 0) {
+            close(write_fd);
+            _exit(1);
+        }
+    }
+    close(write_fd);
+    _exit(0);
 }
 
 int main(int argc, char **argv) {
@@ -92,7 +74,8 @@ int main(int argc, char **argv) {
     int recursive = (argc >= 4 && strcmp(argv[3], "--recursivo") == 0);
     int num_workers = (argc >= 5) ? atoi(argv[4]) : 4;
     if (num_workers < 1) num_workers = 1;
-    if (num_workers > 64) num_workers = 64; /* limite de seguridad */
+    /* Sin limite fijo: el arreglo de pipes/pids se reserva dinamicamente
+     * mas abajo, del tamano exacto que se pida. */
 
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -103,6 +86,7 @@ int main(int argc, char **argv) {
     if (files.count == 0) {
         fprintf(stderr, "No hay archivos para comprimir en '%s'\n", dir_path);
         file_list_free(&files);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
@@ -112,86 +96,118 @@ int main(int argc, char **argv) {
     int base = files.count / num_workers;
     int extra = files.count % num_workers;
 
-    char tmp_paths[64][64];
-    pid_t pids[64];
+    int (*pipes)[2] = malloc(sizeof(int[2]) * (size_t)num_workers);
+    pid_t *pids = malloc(sizeof(pid_t) * (size_t)num_workers);
+    if (!pipes || !pids) {
+        fprintf(stderr, "No hay memoria suficiente para %d procesos\n", num_workers);
+        free(pipes);
+        free(pids);
+        file_list_free(&files);
+        printf("RESULT ok=0\n");
+        return 1;
+    }
+
     int start = 0;
 
     for (int w = 0; w < num_workers; w++) {
         int count = base + (w < extra ? 1 : 0);
         int end = start + count;
 
-        snprintf(tmp_paths[w], sizeof(tmp_paths[w]), "/tmp/hzip_part_%d_%d.tmp", getpid(), w);
+        if (pipe(pipes[w]) != 0) {
+            perror("pipe");
+            free(pipes);
+            free(pids);
+            file_list_free(&files);
+            printf("RESULT ok=0\n");
+            return 1;
+        }
 
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork");
+            free(pipes);
+            free(pids);
             file_list_free(&files);
+            printf("RESULT ok=0\n");
             return 1;
         } else if (pid == 0) {
             /* --- Proceso hijo --- */
-            int rc = worker_run(dir_path, &files, start, end, tmp_paths[w]);
-            _exit(rc == 0 ? 0 : 1);
+            close(pipes[w][0]); /* el hijo solo escribe */
+            worker_run(dir_path, &files, start, end, pipes[w][1]);
+            /* worker_run llama _exit, no regresa */
         } else {
             /* --- Proceso padre --- */
+            close(pipes[w][1]); /* el padre solo lee */
             pids[w] = pid;
         }
 
         start = end;
     }
 
-    /* El padre espera a todos los hijos */
-    int fail = 0;
-    for (int w = 0; w < num_workers; w++) {
-        int status;
-        waitpid(pids[w], &status, 0);
-        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) fail = 1;
-    }
-
-    if (fail) {
-        fprintf(stderr, "Error: uno o mas procesos hijos fallaron al comprimir\n");
-        for (int w = 0; w < num_workers; w++) remove(tmp_paths[w]);
-        file_list_free(&files);
-        return 1;
-    }
-
-    /* El padre une los archivos temporales en el .hzip final,
-       respetando el orden original de los archivos */
+    /* El padre escribe la cabecera y luego drena cada pipe EN ORDEN,
+     * volcando las entradas ya serializadas directo al .hzip final.
+     * Los hijos corren en paralelo; si uno produce mas de lo que cabe
+     * en el buffer del pipe antes de que el padre llegue a leerlo,
+     * simplemente se bloquea en write() hasta que el padre lo drene,
+     * no hay riesgo de interbloqueo porque ningun hijo espera a otro hijo. */
     FILE *out = fopen(out_path, "wb");
     if (!out) {
         fprintf(stderr, "No se pudo crear '%s'\n", out_path);
-        for (int w = 0; w < num_workers; w++) remove(tmp_paths[w]);
+        for (int w = 0; w < num_workers; w++) close(pipes[w][0]);
+        free(pipes);
+        free(pids);
         file_list_free(&files);
+        printf("RESULT ok=0\n");
         return 1;
     }
 
     fwrite(ARCHIVE_MAGIC, 1, 4, out);
     write_u32(out, (uint32_t)files.count);
 
-    unsigned char buf[65536];
+    int io_fail = 0;
     for (int w = 0; w < num_workers; w++) {
-        FILE *part = fopen(tmp_paths[w], "rb");
-        if (!part) {
-            fclose(out);
-            file_list_free(&files);
-            return 1;
-        }
-        size_t n;
-        while ((n = fread(buf, 1, sizeof(buf), part)) > 0) {
-            fwrite(buf, 1, n, out);
-        }
-        fclose(part);
-        remove(tmp_paths[w]);
+        if (drain_pipe_to_file(pipes[w][0], out) != 0) io_fail = 1;
+        close(pipes[w][0]);
     }
 
     fclose(out);
+
+    int child_fail = 0;
+    for (int w = 0; w < num_workers; w++) {
+        int status;
+        waitpid(pids[w], &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) child_fail = 1;
+    }
+
+    free(pipes);
+    free(pids);
     file_list_free(&files);
+
+    if (io_fail || child_fail) {
+        fprintf(stderr, "Error: uno o mas procesos hijos fallaron al comprimir\n");
+        remove(out_path);
+        printf("RESULT ok=0\n");
+        return 1;
+    }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);
     double elapsed = (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9;
 
-    printf("Compresion paralela (fork) completa: %s -> %s\n", dir_path, out_path);
+    uint64_t original_size = directory_total_size(dir_path, recursive);
+    uint64_t compressed_size = file_size_bytes(out_path);
+
+    printf("Compresion paralela (fork + pipes) completa: %s -> %s\n", dir_path, out_path);
     printf("Procesos utilizados: %d\n", num_workers);
     printf("Tiempo total: %.4f s\n", elapsed);
+    printf("Tamano original: %llu bytes\n", (unsigned long long)original_size);
+    printf("Tamano comprimido: %llu bytes\n", (unsigned long long)compressed_size);
+    if (original_size > 0) {
+        printf("Radio de compresion: %.2f%%\n",
+               100.0 * (double)compressed_size / (double)original_size);
+    }
+
+    printf("RESULT ok=1 elapsed=%.6f original_size=%llu compressed_size=%llu workers=%d\n",
+           elapsed, (unsigned long long)original_size, (unsigned long long)compressed_size, num_workers);
 
     return 0;
 }
