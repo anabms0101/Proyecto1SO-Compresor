@@ -27,7 +27,7 @@ make all
 ./bin/gui_comparador
 ```
 
-## La GUI (Fase 4)
+## La GUI
 
 **Requisito previo:** los headers de desarrollo de GTK4 no vienen
 instalados por defecto ni siquiera con GNOME instalado — hay que
