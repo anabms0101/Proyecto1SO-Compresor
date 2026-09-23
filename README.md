@@ -103,17 +103,7 @@ marca como error en la tabla en vez de mostrar numeros inventados.
    respecto a la corrida serial, tamano original, tamano comprimido,
    radio de compresion) — una fila por version.
 4. Un panel colapsable ("Ver salida detallada") muestra el log completo
-   de las 6 corridas, util para depurar o para las capturas del informe.
-
-**Probado** en Ubuntu 24.04 + GTK 4.14.5 (equivalente en API a la GTK4
-de Debian 13) corriendo bajo Xvfb (X virtual, sin pantalla fisica): la
-ventana arranca sin errores, y una corrida completa sobre un directorio
-de prueba con texto y binarios genero los 3 `.hzip` — confirmados
-**byte a byte identicos entre si** — y las 3 extracciones dieron
-**identicas al directorio original** (`diff -rq` sin diferencias). En
-Debian 13 con GNOME, el selector de carpetas depende del bus de sesion
-de D-Bus (presente en cualquier sesion grafica real; solo falta en un
-contenedor de pruebas sin entorno de escritorio).
+   de las 6 corridas, util para depurar o para las capturas del informe..
 
 ## Correcciones aplicadas en esta revisión
 
